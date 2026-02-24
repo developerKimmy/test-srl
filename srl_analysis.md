@@ -5,7 +5,7 @@
 ## 테스트 환경
 
 - **한국어 입력**: 비즈니스 뉴스 10문장 (전처리 파이프라인 출력)
-- **영어 입력**: 비즈니스 뉴스 스타일 10문장
+- **영어 입력**: 한국어 10문장의 영어 번역본 (동일 의미, 교차 비교용)
 - **추론**: HuggingFace Transformers `token-classification` 파이프라인
 
 ### 모델 입력 구조에 대한 주의사항
@@ -51,8 +51,8 @@
 
 **입력 예시**:
 ```
-원문:   "Amazon acquired a robotics startup"
-마킹:   "Amazon [V] acquired a robotics startup"
+원문:   "Pressure can be increased not only through trading profits"
+마킹:   "Pressure can be [V] increased not only through trading profits"
          ↑ [V] 마커를 서술어 바로 앞에 삽입
 ```
 
@@ -176,88 +176,92 @@
 → ... (모든 토큰이 동일 라벨 — 분류 기능 없음)
 ```
 
-### 3-2. 영어 입력 (비즈니스 뉴스 10문장)
+### 3-2. 영어 입력 (한국어 문장 번역본 10문장)
 
-| 모델 | 감지된 서술어 | 감지된 인자 | 유효 결과 | 평가 |
-|------|-------------|-----------|----------|------|
-| dannashao | 19 | **38** | 정상 | ARG0/ARG1/ARGM 정확하게 분류, 평균 score 0.95+ |
-| electra-srl | 19 | **34** | 정상 | A0/A1/AM 분류, dannashao와 유사 수준 |
-| mbert-srl | 19 | **전 토큰** | 없음 | 여전히 전 토큰 LABEL_1 (언어 무관 결함) |
+한국어 입력과 동일한 의미의 영어 번역본으로 테스트. 동일 의미에 대한 교차 비교가 가능하다.
+
+| 모델 | 감지된 서술어 | 감지된 인자 | 빈 서술어 | 유효 결과 | 평가 |
+|------|-------------|-----------|----------|----------|------|
+| dannashao | 32 | **49** | 10 (31%) | 정상 | ARG0/ARG1/ARGM 분류, 라벨 16종 사용, 핵심 인자 0.95+ |
+| electra-srl | 32 | **62** | 2 (6%) | 정상 | A0/A1/AM 분류, 라벨 8종, 보조동사에서도 인자 추출 |
+| mbert-srl | 32 | **1,151** | 0 | 없음 | 전 토큰 LABEL_0/LABEL_1 (언어 무관 결함) |
+
+> **공통 실패**: 10번째 문장("SK Group Chairman Chey Tae-won drew attention...")에서 3개 모델 모두 서술어 0건 감지. 고유명사가 많은 복잡한 문장에서 서술어 탐지 휴리스틱 한계.
 
 **dannashao 영어 예시**:
 ```
-원문: Amazon acquired a robotics startup for $1.7 billion.
-서술어: acquired
-→ [ARG0] amazon (score: 0.9973)     ← 행위자
-→ [ARG1] startup (score: 0.9994)    ← 대상
-→ [ARG3] $ (score: 0.6936)          ← 가격
+원문: ...Korea Development Bank stated in a response...
+서술어: stated
+→ [ADV] sources (score: 0.98)       ← 출처
+→ [TMP] 17th (score: 0.996)         ← 시간
+→ [ARG0] bank (score: 0.999)        ← 행위자
+→ [LOC] response (score: 0.753)     ← 장소
+→ [ARG1] considering (score: 0.983) ← 내용
 ```
 
 ```
-원문: The CEO resigned following allegations of financial misconduct.
-서술어: resigned
-→ [ARG0] ceo (score: 0.8546)        ← 행위자
-→ [CAU] allegations (score: 0.8105)  ← 원인
-```
-
-```
-원문: The Federal Reserve raised interest rates for the third consecutive time.
-서술어: raised
-→ [ARG0] reserve (score: 0.9984)    ← 행위자
-→ [ARG1] rates (score: 0.9990)      ← 대상
-→ [TMP] time (score: 0.9950)        ← 시간
+원문: Pressure can be increased not only through trading profits...
+서술어: increased
+→ [ARG1] pressure (score: 0.997)    ← 대상
+→ [MOD] can (score: 0.999)          ← 양태
+→ [MNR] profits (score: 0.838)      ← 수단
 ```
 
 **electra-srl 영어 예시**:
 ```
-원문: Oil prices surged after OPEC decided to cut production.
-서술어: cut
-→ [A0] opec (score: 0.9977)         ← 행위자
-→ [A1] production (score: 0.9963)   ← 대상
+원문: ...domestic medical device market growth and delayed earnings recovery...had an impact.
+서술어: had
+→ [A0] recovery (score: 0.993)      ← 행위자
+→ [A1] impact (score: 0.997)        ← 대상
 
-서술어: surged
-→ [A1] prices (score: 0.9966)       ← 대상
-→ [TMP] after (score: 0.9840)       ← 시간
+서술어: delayed
+→ [A1] earnings (score: 0.998)      ← 대상
+→ [A2] recovery (score: 0.994)      ← 결과
+```
+
+```
+원문: This trend is also leading to increased convenience store sales.
+서술어: is
+→ [A1] trend (score: 0.997)         ← 대상
+→ [DIS] also (score: 0.884)         ← 담화표지
+→ [A2] leading (score: 0.993)       ← 보어
 ```
 
 **mbert-srl 영어 예시**:
 ```
-원문: The company reported a 20% increase in quarterly revenue.
-서술어: reported
-→ [LABEL_1] The (0.6134)
-→ [LABEL_1] company (0.5685)
-→ [LABEL_1] reported (0.5899)
-→ ... (영어에서도 전 토큰 동일 라벨 — 모델 자체 결함)
+원문: Due to the Dubai chewy cookie craze, demand...surged...
+서술어: dried
+→ [LABEL_1] Due (0.503) → [LABEL_1] to (0.585) → [LABEL_1] the (0.580) → ...
+  (48개 토큰 전부 LABEL_0/LABEL_1 — 영어에서도 분류 기능 없음)
 ```
 
 ---
 
 ## 4. dannashao vs electra-srl 상세 비교
 
-영어에서 정상 동작한 두 모델의 품질 비교.
+영어에서 정상 동작한 두 모델의 품질 비교. 한국어 번역 문장으로 동일 의미에 대한 인자 추출 차이를 확인했다.
 
-### 동일 문장 결과 대조
+### 동일 서술어 결과 대조
 
-| 문장 | 서술어 | dannashao | electra-srl |
-|------|--------|-----------|-------------|
-| The company reported... | reported | ARG0: company, ARG1: increase | A0: company, A1: increase |
-| Apple announced... | announced | ARG0: apple, ARG1: chip, LOC: conference | A0: apple, A1: chip, LOC: at |
-| ...was approved by regulators. | approved | ARG1: merger, ARG0: regulators | A0: merger, A0: regulators |
-| OPEC decided to cut... | decided | ARG0: opec, ARG1: cut | A0: opec |
-| The CEO resigned... | resigned | ARG0: ceo, CAU: allegations | A0: ceo, TMP: following |
-| Amazon acquired... | acquired | ARG0: amazon, ARG1: startup, ARG3: $ | A0: amazon, A1: startup |
-| ...raised interest rates | raised | ARG0: reserve, ARG1: rates, TMP: time | A0: reserve, A1: rates, TMP: for |
-| The stock market crashed... | crashed | ARG1: market, CAU: fears | A0: market, LOC: amid |
+| 문장 (한국어 원문 → 영어) | 서술어 | dannashao | electra-srl | 우세 |
+|------|--------|-----------|-------------|------|
+| 산은은...밝혔다 → ...stated... | stated | ADV:sources, TMP:17th, ARG0:bank, LOC:response, ARG1:considering | A0:bank, LOC:in | dannashao |
+| ...수요가 급증 → ...surged... | surged | CAU:craze, ARG1:demand, EXT:much | A0:kadaif, MNR:much | dannashao |
+| ...영향을 미친 → ...had an impact | had | PRR:impact | A0:recovery, A1:impact | electra |
+| 포트폴리오도 갖췄습니다 → ...has...portfolio | has | DIS:addition, ARG0:it, ARG1:portfolio | LOC:in, A0:it, A1:portfolio | dannashao |
+| AI 인프라 관련 ETF → ETFs related to AI... | related | ARG1:etfs, ARG2:infrastructure | A0:etfs, A1:to | dannashao |
 
 ### 비교 분석
 
 | 관점 | dannashao | electra-srl |
 |------|-----------|-------------|
 | **핵심 인자 (ARG0/ARG1)** | 거의 동일 | 거의 동일 |
-| **수식 인자 (ARGM)** | CAU(원인), TMP(시간), LOC(장소) 구분 정확 | LOC/TMP는 정확하나 CAU를 TMP/LOC로 태깅하는 경향 |
-| **세분화** | 60종 라벨로 세밀한 분류 (ARG3=가격 등) | 18종이라 거친 분류 |
-| **score 분포** | 핵심 인자 0.99+, 수식 인자 0.67~0.99 | 핵심 인자 0.99+, 수식 인자 0.40~0.99 |
-| **오분류** | prices, Sales 등 명사를 서술어로 처리 시 부정확 | 동일 |
+| **수식 인자 (ARGM)** | CAU(원인), TMP(시간), MOD(양태), DIS(담화) 등 세밀하게 구분 | LOC/TMP는 정확하나 CAU를 TMP/LOC로 태깅하는 경향 |
+| **인자 텍스트** | 내용어(명사) 포착 경향 (infrastructure, platforms, profits) | 기능어(전치사) 포착 경향 (in, to, on, through) |
+| **보조동사 처리** | 빈 결과 다수 (31% 빈 서술어) | 보조동사에서도 인자 추출 (6% 빈 서술어) |
+| **세분화** | 60종 라벨, 16종 실사용 (ARG3=가격, EXT=정도 등) | 18종 라벨, 8종 실사용 |
+| **score 분포** | 핵심 인자 0.95+, 수식 인자 0.60~0.99 | 핵심 인자 0.95+, 수식 인자 0.40~0.99 |
+| **서브워드 누출** | 간헐적 (##maker 등) | 다소 빈번 (##f, ##ptively 등) |
 | **모델 크기** | 110M (8배 큼) | 13.5M |
 
 ---
@@ -275,13 +279,15 @@
 
 | 모델 | 영어 | 한국어 | HF 사용성 | 총평 |
 |------|------|--------|----------|------|
-| **dannashao** | 우수 (F1 86.69%) | 사용 불가 | 간편 | 영어 SRL 최선 선택지. 라벨 60종으로 세밀한 분류 가능 |
-| **electra-srl** | 양호 | 사용 불가 | 간편 | 소형 모델(13.5M)치고 양호하나 문서 부재 |
-| **mbert-srl** | 사용 불가 | 사용 불가 | 불가 | classification head 누락. 언어와 무관하게 동작하지 않음 |
+| **dannashao** | 우수 (49 인자/32 서술어, 라벨 16종) | 사용 불가 | 간편 | 영어 SRL 최선 선택지. 세밀한 수식 인자 분류 (CAU, MOD, DIS 등) |
+| **electra-srl** | 양호 (62 인자/32 서술어, 라벨 8종) | 사용 불가 | 간편 | 13.5M 소형 모델치고 양호. 보조동사 처리에서 우위 |
+| **mbert-srl** | 사용 불가 (LABEL_0/1만 출력) | 사용 불가 | 불가 | classification head 누락. 언어와 무관하게 동작하지 않음 |
 
 ### 시사점
 
-- 영어에서 dannashao와 electra-srl 모두 **높은 정확도로 SRL 수행** (핵심 인자 score 0.99+)
+- 영어에서 dannashao와 electra-srl 모두 **높은 정확도로 SRL 수행** (핵심 인자 score 0.95+)
+- dannashao는 **내용어(명사) 중심**으로 인자를 포착하고, electra는 **기능어(전치사) 중심** 경향 — 용도에 따라 선택
+- 동일 의미의 한국어/영어 비교를 통해 영어 SRL의 세밀함 vs 한국어 SRL의 부재가 명확히 드러남
 - 한국어 SRL은 **직접 파인튜닝이 유일한 방법** — 동일 아키텍처(BERT/ELECTRA)에 한국어 SRL 데이터로 학습하면 영어 수준의 결과를 기대할 수 있음
 - 베이스 모델로는 한국어에 특화된 **KoELECTRA** (`monologg/koelectra-base-v3-discriminator`) 등이 적합
 
@@ -298,4 +304,4 @@
 
 - 한국어: `data/output/dannashao.json`, `electra-srl.json`, `mbert-srl.json`
 - 영어: `data/output/dannashao_en.json`, `electra-srl_en.json`, `mbert-srl_en.json`
-- 영어 입력: `data/input/sentences_en.json`
+- 영어 입력: `data/input/sentences_en.json` (한국어 문장 영어 번역본)

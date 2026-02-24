@@ -14,7 +14,7 @@ test-srl/
 ├── data/
 │   ├── input/           # 입력 문장
 │   │   ├── sentences.json      # 한국어 10문장
-│   │   └── sentences_en.json   # 영어 10문장
+│   │   └── sentences_en.json   # 영어 10문장 (한국어 번역)
 │   └── output/          # 모델별 추론 결과
 └── srl_analysis.md      # 분석 보고서
 ```
