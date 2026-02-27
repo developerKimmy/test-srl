@@ -1,6 +1,6 @@
-# HuggingFace SRL 모델 비교 분석
+# SRL 모델 비교 분석
 
-영어 기반 SRL(Semantic Role Labeling) 모델 3종을 한국어/영어 문장에 각각 적용하여 비교 평가한 결과.
+영어 기반 SRL(Semantic Role Labeling) 모델 3종 + AllenNLP End-to-End 모델을 한국어/영어 문장에 각각 적용하여 비교 평가한 결과.
 
 ## 테스트 환경
 
@@ -126,17 +126,17 @@
 
 ## 2. 모델 비교 요약
 
-| 항목 | dannashao | electra-srl | mbert-srl |
-|------|-----------|-------------|-----------|
-| **베이스** | BERT-base (영어) | ELECTRA-small (영어) | mBERT (다국어) |
-| **파라미터** | 110M | 13.5M | 178M |
-| **학습 데이터** | Universal PropBank EN | 미공개 | CoNLL-2012 |
-| **라벨 수** | 60 | 18 | ~50+ (BIO) |
-| **라벨 형식** | ARG0, ARGM-TMP, _ | A0, AM-TMP, O | B-A0, I-A0, O |
-| **서술어 마킹** | `[V]` 토큰 삽입 | `[V]` 토큰 삽입 | token_type_ids |
-| **보고 F1** | 86.69% | 미공개 | 63.07% |
-| **HF Pipeline 호환** | O | O | X (별도 파이프라인 필요) |
-| **토크나이저 언어** | 영어 전용 | 영어 전용 | 104개 언어 |
+| 항목 | dannashao | electra-srl | mbert-srl | **AllenNLP SRL** |
+|------|-----------|-------------|-----------|-----------------|
+| **베이스** | BERT-base (영어) | ELECTRA-small (영어) | mBERT (다국어) | BERT-base (영어) |
+| **파라미터** | 110M | 13.5M | 178M | ~110M |
+| **학습 데이터** | Universal PropBank EN | 미공개 | CoNLL-2012 | CoNLL-2012 |
+| **라벨 수** | 60 | 18 | ~50+ (BIO) | BIO (ARG0~5, ARGM-*) |
+| **라벨 형식** | ARG0, ARGM-TMP, _ | A0, AM-TMP, O | B-A0, I-A0, O | B-ARG0, I-ARG0, O |
+| **서술어 마킹** | `[V]` 토큰 삽입 | `[V]` 토큰 삽입 | token_type_ids | **자동 (End-to-End)** |
+| **보고 F1** | 86.69% | 미공개 | 63.07% | 86.49% |
+| **HF Pipeline 호환** | O | O | X (별도 파이프라인 필요) | X (AllenNLP 전용) |
+| **토크나이저 언어** | 영어 전용 | 영어 전용 | 104개 언어 | 영어 전용 |
 
 ---
 
@@ -282,6 +282,7 @@
 | **dannashao** | 우수 (49 인자/32 서술어, 라벨 16종) | 사용 불가 | 간편 | 영어 SRL 최선 선택지. 세밀한 수식 인자 분류 (CAU, MOD, DIS 등) |
 | **electra-srl** | 양호 (62 인자/32 서술어, 라벨 8종) | 사용 불가 | 간편 | 13.5M 소형 모델치고 양호. 보조동사 처리에서 우위 |
 | **mbert-srl** | 사용 불가 (LABEL_0/1만 출력) | 사용 불가 | 불가 | classification head 누락. 언어와 무관하게 동작하지 않음 |
+| **AllenNLP SRL** | **우수** (66 인자/39 서술어, End-to-End) | 사용 불가 (명사를 서술어로 오인) | AllenNLP 전용 | End-to-End 모델. 영어 최고 성능. 서술어 자동 탐지로 휴리스틱 의존성 제거 |
 
 ### 시사점
 
@@ -290,6 +291,99 @@
 - 동일 의미의 한국어/영어 비교를 통해 영어 SRL의 세밀함 vs 한국어 SRL의 부재가 명확히 드러남
 - 한국어 SRL은 **직접 파인튜닝이 유일한 방법** — 동일 아키텍처(BERT/ELECTRA)에 한국어 SRL 데이터로 학습하면 영어 수준의 결과를 기대할 수 있음
 - 베이스 모델로는 한국어에 특화된 **KoELECTRA** (`monologg/koelectra-base-v3-discriminator`) 등이 적합
+
+---
+
+## 6. AllenNLP End-to-End SRL
+
+### 6-1. 모델 스펙
+
+| 항목 | 내용 |
+|------|------|
+| **모델** | `structured-prediction-srl-bert` (AllenNLP) |
+| **베이스 모델** | BERT-base (영어) |
+| **아키텍처** | BIO 태깅 + Viterbi 디코딩 (End-to-End) |
+| **학습 데이터** | CoNLL-2012 (OntoNotes v5.0) |
+| **보고 성능** | F1 86.49% (CoNLL-2012 test) |
+| **서술어 탐지** | **자동** (모델이 서술어 탐지 + 인자 태깅을 모두 수행) |
+| **라벨 형식** | BIO (B-ARG0, I-ARG0, B-V, O 등) |
+| **실행 환경** | AllenNLP 2.x (Python 3.9, PyTorch <1.12) — 별도 conda 환경 필요 |
+
+### 6-2. End-to-End vs Argument-Only 비교
+
+기존 3개 모델(dannashao, electra-srl, mbert-srl)은 모두 **argument-only** 모델로, 서술어 위치를 외부에서 지정해야 한다. 반면 AllenNLP SRL은 서술어 탐지 + 인자 태깅을 모두 수행하는 **end-to-end** 모델이다.
+
+| 비교 항목 | Argument-Only (기존 3종) | End-to-End (AllenNLP) |
+|-----------|------------------------|----------------------|
+| **서술어 탐지** | 외부 휴리스틱 필요 (정규식 패턴) | 모델이 자동 수행 |
+| **서술어 오탐/누락** | 휴리스틱 한계로 발생 | 모델 학습 기반, 상대적 안정 |
+| **순수 성능 평가** | 서술어 탐지 정확도에 영향받음 | 서술어 + 인자 통합 평가 가능 |
+| **입력 형식** | `[V]` 마커 삽입 또는 token_type_ids | 원문 문장 그대로 입력 |
+| **파이프라인 복잡도** | 전처리 단계 필요 | 단순 (문장 → 결과) |
+
+### 6-3. 테스트 결과
+
+**한국어 입력 (10문장)**:
+
+| 항목 | 결과 |
+|------|------|
+| 자동 탐지 서술어 수 | 10 (8문장에서 탐지, 2문장 서술어 없음) |
+| 감지된 인자 수 | 12 |
+| 평가 | **사용 불가**. 서술어 탐지가 완전히 잘못됨 (명사를 서술어로 오인) |
+
+한국어 서술어 탐지 상세:
+
+| 문장 | 탐지된 "서술어" | 실제 | 판정 |
+|------|---------------|------|------|
+| 두바이 쫀득 쿠키 열풍... | "쫀득" (형용사) | 급증하면서, 동원된 | 오탐 |
+| 17일 투자은행... | "강준현" (고유명사), "매각하는" | 밝혔다 | 오탐+부분 |
+| 이날 밤 춘완이... | 없음 | 보도했다 | 누락 |
+| 의료기기 내수... | "둔화와" (명사) | 분석됐다 | 오탐 |
+| 세부적으로... | "양산'에" (명사) | 해당한다 | 오탐 |
+| 여기에 인공지능... | "인공지능(AI)·반도체·..." (명사) | 갖췄습니다 | 오탐 |
+| 미국 투자 상품... | "인프라" (명사) | 나타냈다 | 오탐 |
+| 매매 차익뿐만... | "수위를" (명사) | 높일, 있다 | 오탐 |
+| 이 같은 트렌드는... | 없음 | 이어지고 | 누락 |
+| 최태원 SK그룹... | "최태원" (고유명사), "건네" | 끌었다 | 오탐+부분 |
+
+> 영어 SRL로 학습된 BERT가 한국어 토큰을 서브워드로 분해한 뒤 임의의 위치를 서술어로 선택. 명사·고유명사를 서술어로 오인하며, 인자 경계도 의미적으로 무관. 기존 3개 모델(dannashao 등)의 한국어 실패와 동일 패턴.
+
+**영어 입력 (10문장)**:
+
+| 항목 | 결과 |
+|------|------|
+| 자동 탐지 서술어 수 | 39 (10문장 모두에서 탐지) |
+| 감지된 인자 수 | 66 |
+| 빈 서술어 (인자 0건) | 3 (8%) |
+| 평가 | **우수**. 서술어 자동 탐지 + 인자 추출 모두 정확 |
+
+영어 대표 예시:
+
+```
+문장: ...Korea Development Bank stated in a response...
+서술어: stated (자동 탐지)
+→ [ARGM-ADV] According to investment banking industry sources on the 17th  ← 부사어
+→ [ARG0] Korea Development Bank                                            ← 행위자
+→ [ARGM-LOC] in a response submitted to...Finance Committee               ← 장소
+→ [ARG1] that it is also considering selling...independently              ← 내용
+```
+
+```
+문장: ...demand...surged so much that even airplanes were mobilized.
+서술어: surged (자동 탐지)
+→ [ARGM-CAU] Due to the Dubai chewy cookie craze                          ← 원인
+→ [ARG1] demand for key ingredients such as pistachios...kadaif            ← 대상
+→ [ARG2] so much that even airplanes were mobilized                        ← 정도
+```
+
+**서술어 탐지 비교** (영어):
+
+| 방식 | 탐지 서술어 수 | 빈 서술어 | 비고 |
+|------|--------------|----------|------|
+| 정규식 휴리스틱 (기존) | 32 | — | 어미 패턴 + 공통 동사 사전. 10번째 문장 서술어 0건 |
+| AllenNLP 자동 탐지 | **39** | 3 (8%) | 모델 기반. 10문장 모두 서술어 탐지. `mobilized`, `completed` 등 휴리스틱 누락분 포착 |
+
+> AllenNLP는 기존 휴리스틱이 놓친 서술어 7개를 추가로 탐지하면서도, 10번째 문장("SK Group Chairman...")에서도 `drew`, `handing`, `following` 3개를 정확히 포착. 기존 방식에서 서술어 0건이던 문장의 문제가 해결됨.
 
 ---
 
@@ -302,6 +396,6 @@
 
 ## 결과 파일
 
-- 한국어: `data/output/dannashao.json`, `electra-srl.json`, `mbert-srl.json`
-- 영어: `data/output/dannashao_en.json`, `electra-srl_en.json`, `mbert-srl_en.json`
+- 한국어: `data/output/dannashao.json`, `electra-srl.json`, `mbert-srl.json`, `allennlp-srl.json`
+- 영어: `data/output/dannashao_en.json`, `electra-srl_en.json`, `mbert-srl_en.json`, `allennlp-srl_en.json`
 - 영어 입력: `data/input/sentences_en.json` (한국어 문장 영어 번역본)
